@@ -11,8 +11,20 @@ Original file is located at
 #drive.mount('/content/drive')
 
 #Define if the simulation is for uRLLC or eMBB slice
-old_traffic_model = False
-m2m = True
+web_traffic = True
+m2m = False
+m2m_model1 = False
+
+#define train size
+result_size = 60
+web_train_size = 7000
+web_test_size = 7000
+
+m2m_train_size = 2000
+m2m_test_size = 2000
+
+web_memory_size = 60
+m2m_memory_size = 15
 
 # Part 1 - Data Preprocessing
 
@@ -24,19 +36,19 @@ import pandas as pd
 
 # Importing the training set
 
-if old_traffic_model == True:
+if web_traffic == True:
     eMBB = True
     if eMBB == True:
-        dataset_train = pd.read_csv('/home/mdaa/traffic_prediction/traffic_simulation.csv', sep=';')
+#        dataset_train = pd.read_csv('/home/mdaa/traffic_prediction/dataSet/web_traffic/train/traffic_simulation.csv', sep=';')
+        dataset_train = pd.read_csv('/home/mdaa/traffic_prediction/dataSet/web_traffic2/train/traffic_simulation_100usr.csv', sep=';')
     else:
         dataset_train = pd.read_csv('/content/drive/My Drive/Colab Notebooks/traffic_prediction/data_URLLC/traffic_simulation.csv', sep=';')
         
 if m2m == True:
-    m2m_model1 = True
     if m2m_model1 == True:
-        dataset_train = pd.read_csv('/home/mdaa/traffic_prediction/m2m_traffic/model_1/traffic_simulation.csv', sep=';')
+        dataset_train = pd.read_csv('/home/mdaa/traffic_prediction/dataSet/m2m_traffic/model_1/traffic_simulation_3000_1800usr.csv', sep=';')
     else:
-        dataset_train = pd.read_csv('/home/mdaa/traffic_prediction/m2m_traffic/model_2/traffic_simulation.csv', sep=';')
+        dataset_train = pd.read_csv('/home/mdaa/traffic_prediction/dataSet/m2m_traffic/model_2/traffic_simulation_3000_1800usr.csv', sep=';')
 
     
 #Insert a new column containing the 'byte' value converted to 'Mb' for training
@@ -55,15 +67,15 @@ training_set_scaled = sc.fit_transform(training_set)
 X_train = []
 y_train = []
 
-if old_traffic_model == True:
-    for i in range(60, 6000):
+if web_traffic == True:
+    for i in range(60, web_train_size):
         X_train.append(training_set_scaled[i-60:i, 0])
         y_train.append(training_set_scaled[i, 0])
     X_train, y_train = np.array(X_train), np.array(y_train)
     
 if m2m == True:
-    for i in range(30, 10000):
-        X_train.append(training_set_scaled[i-30:i, 0])
+    for i in range(m2m_memory_size, m2m_train_size):
+        X_train.append(training_set_scaled[i-m2m_memory_size:i, 0])
         y_train.append(training_set_scaled[i, 0])
     X_train, y_train = np.array(X_train), np.array(y_train)
 
@@ -78,6 +90,7 @@ from keras.layers import Activation, Dense
 from keras.layers import LSTM
 from keras.layers import Dropout
 from keras.optimizers import adam, SGD, RMSprop, Nadam
+from keras.callbacks import EarlyStopping, ModelCheckpoint
 
 # Initialising the RNN
 regressor = Sequential()
@@ -104,8 +117,29 @@ regressor.add(Dropout(0.5))
 
 
 # Adding a fifth LSTM layer and some Dropout regularisation
+#regressor.add(LSTM(units = 100))
+#regressor.add(Dropout(0.5))
+
+# Adding a fifth LSTM layer and some Dropout regularisation
+#regressor.add(LSTM(units = 100, return_sequences = True))
+#regressor.add(Dropout(0.5))
+
+
+#delete fter experiment
+
+# Adding a sixth LSTM layer and some Dropout regularisation
+#regressor.add(LSTM(units = 100, return_sequences = True))
+#regressor.add(Dropout(0.5))
+
+
+# Adding a seventh LSTM layer and some Dropout regularisation
+#regressor.add(LSTM(units = 100, return_sequences = True))
+#regressor.add(Dropout(0.5))
+
+# Adding a eighth LSTM layer and some Dropout regularisation
 regressor.add(LSTM(units = 100))
 regressor.add(Dropout(0.5))
+
 
 
 # Adding the output layer
@@ -122,8 +156,42 @@ opt = adam
 regressor.compile(optimizer = 'adam', loss = 'mean_squared_error', metrics=['accuracy'])
 #regressor.compile(optimizer = 'adam', loss = 'mean_squared_error', metrics=['mean_squared_error'])
 
+
+# Create callbacks
+import datetime as datetime
+import tensorflow as tf
+import csv
+
+class MyCustomCallback(tf.keras.callbacks.Callback):
+
+  def on_train_batch_begin(self, batch, logs=None):
+    #print('Training: batch {} begins at {}'.format(batch, datetime.datetime.now().time()))
+    print('Training: batch {} begins at {}'.format(batch, datetime.datetime.now().time()))
+    
+
+  def on_train_batch_end(self, batch, logs=None):
+    print('Training: batch {} ends at {}'.format(batch, datetime.datetime.now().time()))
+
+  def on_test_batch_begin(self, batch, logs=None):
+    print('Evaluating: batch {} begins at {}'.format(batch, datetime.datetime.now().time()))
+
+  def on_test_batch_end(self, batch, logs=None):
+    print('Evaluating: batch {} ends at {}'.format(batch, datetime.datetime.now().time()))
+    
+  def create_cpu_time_report (self, batch, logs=None):
+    with open('lstm_data_cpu.csv', 'w', newline='') as file:
+        writer = csv.writer(file)
+        writer.writerows()
+
+
+
+
 # Fitting the RNN to the Training set
-model_data = regressor.fit(X_train, y_train, validation_split = 0.30, epochs = 2000, batch_size = 32,  verbose=1)
+#model_data = regressor.fit(X_train, y_train, validation_split = 0.30, epochs = 2000,  callbacks=[MyCustomCallback()], batch_size = 32,  verbose=1)
+if web_traffic == True:
+    model_data = regressor.fit(X_train, y_train, validation_split = 0.30, epochs = 500, batch_size = 32,  verbose=1)
+if m2m == True:
+    model_data = regressor.fit(X_train, y_train, validation_split = 0.30, epochs = 500, batch_size = 32,  verbose=1)
 
 # list all data in history
 #print(model_data.history.keys())
@@ -154,23 +222,28 @@ plt.show()
 
 # Getting the test dataset
 
-if old_traffic_model == True:
+if web_traffic == True:
     if eMBB == True:
-        dataset_test = pd.read_csv('/home/mdaa/traffic_prediction/traffic_simulation_test.csv', sep=';')
+#        dataset_test = pd.read_csv('/home/mdaa/traffic_prediction/dataSet/web_traffic/test/traffic_simulation.csv', sep=';')
+         dataset_test = pd.read_csv('/home/mdaa/traffic_prediction/dataSet/web_traffic2/test/traffic_simulation_100usr.csv', sep=';')
     else:
         dataset_test = pd.read_csv('/content/drive/My Drive/Colab Notebooks/traffic_prediction/data_URLLC/traffic_simulation_testData.csv', sep=';')
         
 if m2m == True:
-    m2m_model1 = True
+#    m2m_model1 = False
     if m2m_model1 == True:
-        dataset_test = pd.read_csv('/home/mdaa/traffic_prediction/m2m_traffic/model1_test/traffic_simulation.csv', sep=';')
+        dataset_test = pd.read_csv('/home/mdaa/traffic_prediction/dataSet/m2m_traffic/model1_test/traffic_simulation_3000_1800usr.csv', sep=';')
     else:
-        dataset_test = pd.read_csv('/home/mdaa/traffic_prediction/m2m_traffic/model2_test/traffic_simulation.csv', sep=';')
+        dataset_test = pd.read_csv('/home/mdaa/traffic_prediction/dataSet/m2m_traffic/model2_test/traffic_simulation_3000_1800usr.csv', sep=';')
 
 #Insert a new column containing the 'byte' value converted to 'Mb' for testing
 dataset_test['TotalData_Mb'] = dataset_test.iloc[:, 2].values / 1000000
 #real_stock_price = dataset_test.iloc[60:90, 1:2].values
-real_test_data = dataset_test.iloc[1775:1835, 4].values
+if web_traffic == True:
+    real_test_data = dataset_test.iloc[web_test_size:web_test_size + result_size, 4].values
+if m2m == True:
+    real_test_data = dataset_test.iloc[m2m_test_size:m2m_test_size + result_size, 4].values
+#real_test_data = dataset_test.iloc[web_test_size:web_test_size + result_size, 4].values
 
 # Getting the predicted stock price of 2017
 #dataset_total = pd.concat((dataset_train['Open'], dataset_test['Open']), axis = 0)
@@ -182,9 +255,16 @@ inputs = inputs.reshape(-1,1)
 inputs = sc.transform(inputs)
 X_test = []
 inputs_size = len(inputs)
-for i in range(1775, 1835):
-#    X_test.append(inputs[i-60:i, 0])
-    X_test.append(inputs[i-30:i, 0])
+
+if web_traffic == True:
+    for i in range(web_test_size, web_test_size + result_size):
+#       X_test.append(inputs[i-60:i, 0])
+        X_test.append(inputs[i-60:i, 0])
+        
+if m2m == True:
+    for i in range(1775, 1835):
+#       X_test.append(inputs[i-60:i, 0])
+        X_test.append(inputs[i-m2m_memory_size:i, 0])
 X_test = np.array(X_test)
 X_test = np.reshape(X_test, (X_test.shape[0], X_test.shape[1], 1))
 #X_test = np.reshape(X_test, -1)
@@ -194,13 +274,30 @@ predicted_test_traffic = regressor.predict(X_test)
 predicted_test_traffic = sc.inverse_transform(predicted_test_traffic)
 
 # Visualising the results
-plt.plot(real_test_data, color = 'red', label = 'Real Traffic (MB)')
-plt.plot(predicted_test_traffic, color = 'blue', label = 'Predicted traffic (MB) for Test Data')
-#plt.ylim (15,17)
-plt.title('Traffic Prediction')
-plt.xlabel('Time Index (s)')
-plt.ylabel('Data (MB)')
-plt.legend(loc='best', prop={'size': 6})
+init_val = 0;
+prediction_size = 60
+#x_val = []
+#for loop in range (prediction_size):
+#    x_val.append(init_val)
+#    init_val += 0.1
+    
+
+if web_traffic == True:
+    plt.plot(real_test_data, color = 'red', label = 'Test Traffic (different dataset)')
+    plt.plot(predicted_test_traffic, color = 'blue', label = 'Predicted traffic')
+    plt.ylim (43,50)
+    plt.title('Traffic Prediction')
+    plt.xlabel('Time Index (s)')
+    plt.ylabel('Data (MBps)')
+    plt.legend(loc='best', prop={'size': 6})
+elif m2m == True:
+    plt.plot(real_test_data, color = 'red', label = 'Test Traffic (different dataset)')
+    plt.plot(predicted_test_traffic, color = 'blue', label = 'Predicted traffic')
+    plt.ylim (0,6)
+    plt.title('Traffic Prediction')
+    plt.xlabel('Time Index (s)')
+    plt.ylabel('Data (MBps)')
+    plt.legend(loc='best', prop={'size': 6})
 
 plt.savefig('lstm_testData_data.png',bbox_inches="tight", pad_inches=0, dpi=300)
 
@@ -210,13 +307,21 @@ plt.show()
 # Creating a data structure with 60 timesteps and 1 output
 
 #real_valid_data = dataset_train.iloc[6000:6060, 4].values
-real_valid_data = dataset_train.iloc[60000:60060, 4].values
+if web_traffic == True:
+    real_valid_data = dataset_train.iloc[web_train_size : web_train_size + result_size, 4].values
+if m2m == True:
+    real_valid_data = dataset_train.iloc[m2m_train_size:m2m_train_size+result_size, 4].values
 
 X_valid = []
-#for i in range(3000,3060):
-for i in range(60000,60060):
+if web_traffic == True:
+    for i in range(web_train_size,web_train_size + result_size):
 #    X_valid.append(training_set_scaled[i-60:i, 0])
-        X_valid.append(training_set_scaled[i-30:i, 0])
+        X_valid.append(training_set_scaled[i-60:i, 0])
+        
+if m2m == True:
+    for i in range(m2m_train_size,m2m_train_size+result_size):
+#    X_valid.append(training_set_scaled[i-60:i, 0])
+        X_valid.append(training_set_scaled[i-m2m_memory_size:i, 0])
 X_valid = np.array(X_valid)
 X_valid = np.reshape(X_valid, (X_valid.shape[0], X_valid.shape[1], 1))
 
@@ -227,13 +332,23 @@ predicted_packet_valid = sc.inverse_transform(predicted_packet_valid)
 #from google.colab import files
 #test = plt.figure()
 
-plt.plot(real_valid_data, color = 'green', label = 'Real Traffic (MB) (validate dataset)')
-plt.plot(predicted_packet_valid, color = 'orange', label = 'Predicted traffic (MB) for Validation Data')
-#plt.ylim (15,17)
-plt.title('Traffic Prediction')
-plt.xlabel('Time Index (s)')
-plt.ylabel('Data (MB)')
-plt.legend(loc='best', prop={'size': 6})
+
+if web_traffic == True:
+    plt.plot(real_valid_data, color = 'green', label = 'Test Traffic (same dataset)')
+    plt.plot(predicted_packet_valid, color = 'orange', label = 'Predicted traffic')
+    plt.ylim (43,50)
+    plt.title('Traffic Prediction')
+    plt.xlabel('Time Index (s)')
+    plt.ylabel('Data (MBps)')
+    plt.legend(loc='best', prop={'size': 6})
+elif m2m == True:
+    plt.plot(x_val, real_valid_data, color = 'green', label = 'Test Traffic (same dataset)')
+    plt.plot(x_val, predicted_packet_valid, color = 'orange', label = 'Predicted traffic')
+    plt.ylim (0,6)
+    plt.title('Traffic Prediction')
+    plt.xlabel('Time Index (s)')
+    plt.ylabel('Data (MBps)')
+    plt.legend(loc='best', prop={'size': 6})
 
 #plt.draw()
 #fig = plt.figure(figsize=(9, 11))
@@ -243,13 +358,17 @@ plt.show()
 
 # Visualising the combination
 
-plt.plot(real_test_data, color = 'red', label = 'Real Traffic (MB)')
-plt.plot(predicted_test_traffic, color = 'blue', label = 'Predicted traffic (MB)')
-plt.plot(real_valid_data, color = 'green', label = 'Real Traffic (MB) (validate dataset')
-plt.plot(predicted_packet_valid, color = 'orange', label = 'Predicted traffic (MB)')
+plt.plot(real_test_data, color = 'red', label = 'Test Traffic (different dataset)')
+plt.plot(predicted_test_traffic, color = 'blue', label = 'Predicted traffic')
+plt.plot(real_valid_data, color = 'green', label = 'Test Traffic (same dataset)')
+plt.plot(predicted_packet_valid, color = 'orange', label = 'Predicted traffic')
+if web_traffic == True:
+    plt.ylim (43,50)
+elif m2m == True:
+    plt.ylim (0,6)
 plt.title('Traffic Prediction')
 plt.xlabel('Time Index (s)')
-plt.ylabel('Data (MB)')
+plt.ylabel('Data (MBps)')
 plt.legend(loc='best', prop={'size': 6})
 
 #plt.draw()
